@@ -7,6 +7,12 @@ export interface PersonInfo {
   personId: string;
 }
 
+export interface FileInfoWithDate {
+  fileName: string;
+  personId: string;
+  lastModified: string; // ISO 8601
+}
+
 export interface StorageProvider {
   /** Read a single file. Throws if person or file not found. */
   read(personId: string, fileName: string): Promise<string>;
@@ -25,4 +31,16 @@ export interface StorageProvider {
 
   /** Check if a person exists in storage. */
   exists(personId: string): Promise<boolean>;
+
+  /** Write content to a file. Creates the file if it doesn't exist. */
+  writeFile(personId: string, fileName: string, content: string): Promise<void>;
+
+  /** List portfolio files with last-modified dates (excludes _ prefixed files). */
+  listFilesWithDates(personId: string): Promise<FileInfoWithDate[]>;
+
+  /** Get mtime for a single file. Returns null if file not found. */
+  getFileMtime(personId: string, fileName: string): Promise<string | null>;
+
+  /** Append a line to a file (for JSON-lines logs). Creates the file if it doesn't exist. */
+  appendFile(personId: string, fileName: string, content: string): Promise<void>;
 }

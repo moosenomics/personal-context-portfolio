@@ -10,6 +10,8 @@ import {
   missingRolesWarning,
   viewAsWarning,
 } from "../messages/index.js";
+import { executeWriteBack } from "../write-back/index.js";
+import { isLLMConfigured } from "../llm/index.js";
 
 async function getUserTags(
   storage: StorageProvider,
@@ -283,7 +285,147 @@ export function registerTools(
     }
   );
 
-  // Tool 9: view_portfolio_as
+  // Tool 9: get_profile_freshness
+  server.tool(
+    "get_profile_freshness",
+    "Check when a person's profile files were last updated. Use this to identify stale profiles that may need review, or to see if a profile has been recently updated.",
+    {
+      person_id: z.string().describe("Person identifier (e.g., 'michael-scott')."),
+    },
+    async ({ person_id }) => {
+      if (person_id.includes("/") || person_id.includes("\\") || person_id.includes("..")) {
+        return {
+          content: [{ type: "text" as const, text: invalidIdError(person_id) }],
+          isError: true,
+        };
+      }
+
+      try {
+        const files = await storage.listFilesWithDates(person_id);
+        const displayName = await extractDisplayName(storage, person_id);
+
+        const lines = files.map((f) => {
+          const name = f.fileName.replace(/\.md$/, "");
+          return `- **${name}**: ${f.lastModified}`;
+        });
+
+        return {
+          content: [{
+            type: "text" as const,
+            text: `# Profile Freshness: ${displayName} (${person_id})\n\n${lines.join("\n")}`,
+          }],
+        };
+      } catch {
+        const availableIds = await getAvailablePersonIds(storage);
+        return {
+          content: [{ type: "text" as const, text: personNotFoundError(person_id, availableIds) }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Tool 10: submit_profile_updates
+  server.tool(
+    "submit_profile_updates",
+    "Submit profile updates after a thorough conversation review. This is the primary end-of-session tool for harvesting what was learned about the user during a conversation. Before calling this, review the entire conversation and identify specific, concrete observations about the user — new projects, decisions made, tools adopted, priority changes, relationship updates, etc. Each observation should be one clear sentence. The server normalizes observations into structured portfolio content using AI, then merges changes into the appropriate files. Use the session_diff prompt for guided harvest workflow.",
+    {
+      observations: z.array(z.string()).min(1).describe(
+        "Plain-text observations from the conversation. Each observation describes something learned about the user. Examples: 'Started managing the Jenkins pipeline', 'Decided to prioritize API rewrite over mobile app', 'Now using Terraform for infrastructure'"
+      ),
+      visibility: z.object({
+        include: z.array(z.string()).optional(),
+        exclude: z.array(z.string()).optional(),
+      }).optional().describe(
+        "Optional redaction scoping for the new content. If provided, inserted content will be wrapped in redaction markers. Example: { exclude: ['michael-scott', 'dwight-schrute'] }"
+      ),
+    },
+    async ({ observations, visibility }) => {
+      try {
+        const result = await executeWriteBack(storage, {
+          personId: userId,
+          observations,
+          visibility,
+        });
+
+        const response: Record<string, unknown> = {
+          status: result.status,
+          files_updated: result.files_updated,
+          skipped_observations: result.skipped_observations,
+          visibility_applied: result.visibility_applied,
+          change_history_id: result.change_history_id,
+        };
+
+        if (result.warnings.length > 0) {
+          response.warnings = result.warnings;
+        }
+
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: err instanceof Error ? err.message : String(err),
+          }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Tool 11: update_my_profile
+  server.tool(
+    "update_my_profile",
+    "Quick ad-hoc profile update for mid-conversation changes. Use this when the user mentions something specific that should be saved right away — a new tool they're using, a project status change, a decision they just made. For comprehensive end-of-session reviews, prefer submit_profile_updates or the session_diff prompt instead.",
+    {
+      observations: z.array(z.string()).min(1).describe(
+        "Plain-text observations to save. Each observation describes something learned about the user."
+      ),
+      visibility: z.object({
+        include: z.array(z.string()).optional(),
+        exclude: z.array(z.string()).optional(),
+      }).optional().describe(
+        "Optional redaction scoping for the new content."
+      ),
+    },
+    async ({ observations, visibility }) => {
+      try {
+        const result = await executeWriteBack(storage, {
+          personId: userId,
+          observations,
+          visibility,
+        });
+
+        const response: Record<string, unknown> = {
+          status: result.status,
+          files_updated: result.files_updated,
+          skipped_observations: result.skipped_observations,
+          visibility_applied: result.visibility_applied,
+          change_history_id: result.change_history_id,
+        };
+
+        if (result.warnings.length > 0) {
+          response.warnings = result.warnings;
+        }
+
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(response, null, 2) }],
+        };
+      } catch (err) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: err instanceof Error ? err.message : String(err),
+          }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // Tool 12: view_portfolio_as
   server.tool(
     "view_portfolio_as",
     "View a person's portfolio file from a different person's perspective. This shows what the target viewer would see, filtered through BOTH the viewer's access AND your own access. You cannot see more than you normally would — this only lets you see less. Use this when the user wants to verify their redaction settings ('what does Michael see in my profile?') or explore how content looks from another person's perspective.",

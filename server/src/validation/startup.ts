@@ -18,7 +18,7 @@ const CANONICAL_FILES = [
 export async function runStartupValidation(
   storage: StorageProvider,
   portfoliosDir: string,
-  userId: string
+  userId: string | null
 ): Promise<void> {
   console.error(`[PCP] Validating portfolios at ${portfoliosDir}...`);
 
@@ -122,13 +122,15 @@ export async function runStartupValidation(
     }
   }
 
-  // Verify PCP_USER_ID
-  const userExists = await storage.exists(userId);
-  if (!userExists) {
-    console.error(
-      `[PCP] ⚠ PCP_USER_ID "${userId}" does not match any person directory`
-    );
-    warnings++;
+  // Verify PCP_USER_ID (only for stdio transport where userId is set at startup)
+  if (userId) {
+    const userExists = await storage.exists(userId);
+    if (!userExists) {
+      console.error(
+        `[PCP] ⚠ PCP_USER_ID "${userId}" does not match any person directory`
+      );
+      warnings++;
+    }
   }
 
   console.error(

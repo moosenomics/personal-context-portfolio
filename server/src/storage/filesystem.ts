@@ -1,6 +1,6 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, stat, writeFile, appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { FileInfo, PersonInfo, StorageProvider } from "./types.js";
+import type { FileInfo, FileInfoWithDate, PersonInfo, StorageProvider } from "./types.js";
 
 function validatePathSegment(value: string, label: string): void {
   if (
@@ -15,7 +15,11 @@ function validatePathSegment(value: string, label: string): void {
 }
 
 export class FilesystemStorageProvider implements StorageProvider {
-  constructor(private portfoliosDir: string) {}
+  public readonly portfoliosDir: string;
+
+  constructor(portfoliosDir: string) {
+    this.portfoliosDir = portfoliosDir;
+  }
 
   async read(personId: string, fileName: string): Promise<string> {
     validatePathSegment(personId, "person-id");
@@ -101,5 +105,62 @@ export class FilesystemStorageProvider implements StorageProvider {
     } catch {
       return false;
     }
+  }
+
+  async writeFile(personId: string, fileName: string, content: string): Promise<void> {
+    validatePathSegment(personId, "person-id");
+    validatePathSegment(fileName, "file-name");
+
+    const dirPath = join(this.portfoliosDir, personId);
+    await mkdir(dirPath, { recursive: true });
+    await writeFile(join(dirPath, fileName), content, "utf-8");
+  }
+
+  async listFilesWithDates(personId: string): Promise<FileInfoWithDate[]> {
+    validatePathSegment(personId, "person-id");
+
+    const dirPath = join(this.portfoliosDir, personId);
+    let entries: string[];
+    try {
+      entries = await readdir(dirPath);
+    } catch {
+      throw new Error(`Person not found: ${personId}`);
+    }
+
+    const mdFiles = entries
+      .filter((f) => f.endsWith(".md") && !f.startsWith("_"))
+      .sort();
+
+    const results: FileInfoWithDate[] = [];
+    for (const fileName of mdFiles) {
+      const s = await stat(join(dirPath, fileName));
+      results.push({
+        fileName,
+        personId,
+        lastModified: s.mtime.toISOString(),
+      });
+    }
+    return results;
+  }
+
+  async getFileMtime(personId: string, fileName: string): Promise<string | null> {
+    validatePathSegment(personId, "person-id");
+    validatePathSegment(fileName, "file-name");
+
+    try {
+      const s = await stat(join(this.portfoliosDir, personId, fileName));
+      return s.mtime.toISOString();
+    } catch {
+      return null;
+    }
+  }
+
+  async appendFile(personId: string, fileName: string, content: string): Promise<void> {
+    validatePathSegment(personId, "person-id");
+    validatePathSegment(fileName, "file-name");
+
+    const dirPath = join(this.portfoliosDir, personId);
+    await mkdir(dirPath, { recursive: true });
+    await appendFile(join(dirPath, fileName), content, "utf-8");
   }
 }
