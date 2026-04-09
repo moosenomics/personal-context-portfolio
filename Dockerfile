@@ -23,6 +23,9 @@ COPY --from=builder /build/server/dist ./dist
 # Copy portfolios from the repo root
 COPY portfolios ./portfolios
 
+# Copy server config (api-keys.json, etc.)
+COPY server/config ./config
+
 EXPOSE 8080
 
 CMD ["node", "dist/index.js"]
