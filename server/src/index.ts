@@ -99,6 +99,7 @@ async function startHttp(storage: FilesystemStorageProvider): Promise<void> {
     if (url.pathname === "/mcp") {
       // Auth middleware
       const authHeader = req.headers.authorization;
+      console.error(`[PCP DEBUG] Authorization header: ${JSON.stringify(authHeader)}`);
       if (!authHeader || !authHeader.startsWith("Bearer ")) {
         res.writeHead(401, { "Content-Type": "application/json" });
         res.end(
@@ -114,6 +115,8 @@ async function startHttp(storage: FilesystemStorageProvider): Promise<void> {
 
       const apiKey = authHeader.slice(7);
       const personId = resolveApiKey(apiKey);
+      console.error(`[PCP DEBUG] Extracted API key: ${JSON.stringify(apiKey)}`);
+      console.error(`[PCP DEBUG] Resolved personId: ${JSON.stringify(personId)}`);
 
       if (!personId) {
         res.writeHead(401, { "Content-Type": "application/json" });
