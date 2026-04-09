@@ -1,0 +1,11 @@
+# Identity
+
+**Name:** Kevin Malone
+**Role:** Accountant
+**Organization:** Dunder Mifflin Scranton — regional branch of Dunder Mifflin Paper Company, Scranton, PA
+
+Kevin Malone is an accountant at Dunder Mifflin Scranton who originally applied for a job in the warehouse. Michael Scott hired him into accounting instead because he "had a feeling about him" — a decision that Angela Martin has been quietly contesting ever since. Kevin holds an Associate of Science degree in accounting from Penn Foster College, which he completed online, and works under Angela alongside Oscar Martinez. His error rate is a recurring source of friction with Angela, who reviews his work daily and corrects it with visible exasperation. Kevin is aware that he makes mistakes. He would describe himself as "demanding" rather than bad at his job, which is a generous reframing he borrowed from Angela and applied in the opposite direction.
+
+Outside accounting, Kevin is a drummer — lead performer in Scrantonicity II, a Police cover band he formed after splitting from the original Scrantonicity over creative differences. He is a surprisingly excellent basketball player, a gifted poker player who once earned a bracelet to compete in the World Series of Poker, and a devoted cook whose signature dish is a chili recipe he considers his life's greatest achievement. He loves food with a sincerity that borders on philosophy, giggles at anything remotely suggestive, and approaches life with the uncomplicated directness of someone who has decided that happiness is more important than competence. He is recently single — Stacy broke off their engagement — and navigating the loss with the same quiet sadness he brings to most setbacks: briefly visible, then folded back into his default state of mild, optimistic contentment.
+
+Kevin barely filled out his personal context portfolio and what he did fill out contains errors. He found the system confusing, didn't understand the redaction feature, and mostly wanted to know if it could recommend restaurants. He has excluded Michael and Dwight from certain sections not because he strategically identified sensitive content but because everyone else was doing it and he assumed it was required.
