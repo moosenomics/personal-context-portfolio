@@ -209,9 +209,20 @@ async function startHttp(storage: FilesystemStorageProvider): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  const portfoliosDir = resolve(
-    process.env.PCP_PORTFOLIOS_DIR ?? resolve(__dirname, "..", "..", "portfolios")
-  );
+  const rawPortfoliosDir = process.env.PCP_PORTFOLIOS_DIR;
+  // __dirname is the compiled source dir (e.g., /app/server/dist).
+  // serverRoot is the server package root (e.g., /app/server).
+  // Resolve relative env var paths against serverRoot so "../portfolios" works consistently
+  // whether running via `tsx src/index.ts` (__dirname=src) or `node dist/index.js` (__dirname=dist).
+  const serverRoot = resolve(__dirname, "..");
+  const portfoliosDir = rawPortfoliosDir
+    ? resolve(serverRoot, rawPortfoliosDir)
+    : resolve(serverRoot, "..", "portfolios");
+
+  console.error(`[PCP] __dirname: ${__dirname}`);
+  console.error(`[PCP] cwd: ${process.cwd()}`);
+  console.error(`[PCP] PCP_PORTFOLIOS_DIR (raw): ${rawPortfoliosDir ?? "(not set)"}`);
+  console.error(`[PCP] Resolved portfolios path: ${portfoliosDir}`);
 
   const storage = new FilesystemStorageProvider(portfoliosDir);
 
