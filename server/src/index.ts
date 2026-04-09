@@ -210,14 +210,13 @@ async function startHttp(storage: FilesystemStorageProvider): Promise<void> {
 
 async function main(): Promise<void> {
   const rawPortfoliosDir = process.env.PCP_PORTFOLIOS_DIR;
-  // __dirname is the compiled source dir (e.g., /app/server/dist).
-  // serverRoot is the server package root (e.g., /app/server).
-  // Resolve relative env var paths against serverRoot so "../portfolios" works consistently
-  // whether running via `tsx src/index.ts` (__dirname=src) or `node dist/index.js` (__dirname=dist).
-  const serverRoot = resolve(__dirname, "..");
+  // Absolute paths pass through resolve() unchanged.
+  // Relative paths resolve against cwd(), which is standard Node behavior and
+  // matches what users expect when setting env vars.
+  // Default: ../portfolios relative to __dirname, which handles both tsx (src/) and node (dist/).
   const portfoliosDir = rawPortfoliosDir
-    ? resolve(serverRoot, rawPortfoliosDir)
-    : resolve(serverRoot, "..", "portfolios");
+    ? resolve(rawPortfoliosDir)
+    : resolve(__dirname, "..", "..", "portfolios");
 
   console.error(`[PCP] __dirname: ${__dirname}`);
   console.error(`[PCP] cwd: ${process.cwd()}`);
