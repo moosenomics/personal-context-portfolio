@@ -97,26 +97,27 @@ async function startHttp(storage: FilesystemStorageProvider): Promise<void> {
 
     // MCP endpoint
     if (url.pathname === "/mcp") {
-      // Auth middleware
+      // Auth: check Authorization header first, fall back to ?api_key= query param
       const authHeader = req.headers.authorization;
-      console.error(`[PCP DEBUG] Authorization header: ${JSON.stringify(authHeader)}`);
-      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      const queryApiKey = url.searchParams.get("api_key");
+      const apiKey = authHeader?.startsWith("Bearer ")
+        ? authHeader.slice(7)
+        : queryApiKey;
+
+      if (!apiKey) {
         res.writeHead(401, { "Content-Type": "application/json" });
         res.end(
           JSON.stringify({
             error:
-              "IDENTITY FAILURE. No API key provided in the Authorization header. " +
-              "Format: Authorization: Bearer <api-key>. " +
+              "IDENTITY FAILURE. No API key provided. " +
+              "Send Authorization: Bearer <api-key> header or ?api_key=<api-key> query parameter. " +
               "— D. K. Schrute, Security Task Force",
           })
         );
         return;
       }
 
-      const apiKey = authHeader.slice(7);
       const personId = resolveApiKey(apiKey);
-      console.error(`[PCP DEBUG] Extracted API key: ${JSON.stringify(apiKey)}`);
-      console.error(`[PCP DEBUG] Resolved personId: ${JSON.stringify(personId)}`);
 
       if (!personId) {
         res.writeHead(401, { "Content-Type": "application/json" });
