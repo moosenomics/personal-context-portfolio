@@ -119,6 +119,7 @@ async function startHttp(storage: FilesystemStorageProvider): Promise<void> {
       }
 
       const personId = resolveApiKey(apiKey);
+      console.error(`[PCP] Auth: key=${apiKey} → personId=${personId}`);
 
       if (!personId) {
         res.writeHead(401, { "Content-Type": "application/json" });
@@ -153,6 +154,7 @@ async function startHttp(storage: FilesystemStorageProvider): Promise<void> {
 
         if (sessionId && sessions.has(sessionId)) {
           // Existing session — route to its transport
+          console.error(`[PCP] Reusing session ${sessionId} (request from key=${apiKey}, resolved=${personId})`);
           const session = sessions.get(sessionId)!;
           await session.transport.handleRequest(req, res, parsedBody);
           return;
