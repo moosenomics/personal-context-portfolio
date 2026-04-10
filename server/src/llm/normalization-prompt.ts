@@ -33,6 +33,12 @@ Given observations, determine which of the 10 portfolio files each observation a
 | domain-knowledge.md | Medium. Categorized. Additive — new expertise, new learning areas. |
 | decision-log.md | Append-only. New entries added at end. Never edit existing entries. Detail is the point — each entry tells the full story: context, decision, reasoning, outcome. |
 
+## CRITICAL: No Duplicate Headings
+
+NEVER create a duplicate heading. Before generating output, scan the existing file structure. If the file already has a heading (## Section Name), add new content UNDER that existing heading — do NOT create a second heading with the same name. This applies to all heading levels (##, ###) and to bold-text sub-entries (**Name.**). Duplicate headings are a critical error that corrupts the file structure.
+
+For example, if domain-knowledge.md already has "## Areas Where They're a Beginner" with four entries, and you need to add a fifth, use action "replace" on the existing section with ALL entries (the original four plus the new one). Do NOT use action "add" to create a second "## Areas Where They're a Beginner".
+
 ## Merge Behavior
 
 You receive the user's current portfolio (redacted to their view). Produce updated content ONLY for sections you are changing. Sections you are not changing should be omitted from the response. The server handles merging.

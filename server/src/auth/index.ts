@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -7,8 +7,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 let apiKeyMap: Map<string, string> | null = null;
 
+function getConfigPath(): string {
+  return resolve(__dirname, "..", "..", "config", "api-keys.json");
+}
+
 export async function loadApiKeys(): Promise<void> {
-  const configPath = resolve(__dirname, "..", "..", "config", "api-keys.json");
+  const configPath = getConfigPath();
   try {
     const raw = await readFile(configPath, "utf-8");
     const data = JSON.parse(raw) as Record<string, string>;
@@ -17,6 +21,37 @@ export async function loadApiKeys(): Promise<void> {
   } catch (err) {
     console.error(`[PCP] Warning: Could not load API keys from ${configPath}:`, err);
     apiKeyMap = new Map();
+  }
+}
+
+/**
+ * Check if a person-id has an API key mapped (by value, not by key).
+ */
+export function hasKeyForPerson(personId: string): boolean {
+  if (!apiKeyMap) return false;
+  for (const value of apiKeyMap.values()) {
+    if (value === personId) return true;
+  }
+  return false;
+}
+
+/**
+ * Add an API key mapping and persist to disk.
+ */
+export async function addApiKey(apiKey: string, personId: string): Promise<void> {
+  if (!apiKeyMap) apiKeyMap = new Map();
+  apiKeyMap.set(apiKey, personId);
+
+  // Persist to disk
+  const obj: Record<string, string> = {};
+  for (const [k, v] of apiKeyMap) {
+    obj[k] = v;
+  }
+
+  try {
+    await writeFile(getConfigPath(), JSON.stringify(obj, null, 2) + "\n", "utf-8");
+  } catch (err) {
+    console.error(`[PCP] ⚠ Could not write updated API keys to disk: ${err}`);
   }
 }
 

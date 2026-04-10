@@ -2,6 +2,7 @@ import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { StorageProvider } from "../storage/types.js";
 import { stripNumberedPrefixes } from "../storage/filesystem.js";
+import { hasKeyForPerson, addApiKey } from "../auth/index.js";
 
 const CANONICAL_FILES = [
   "identity.md",
@@ -123,6 +124,18 @@ export async function runStartupValidation(
         }
       } catch {
         // Skip files we can't read
+      }
+    }
+  }
+
+  // Auto-generate API keys for people without one (HTTP transport only —
+  // in stdio mode, auth is via PCP_USER_ID env var, not API keys)
+  if (!userId) {
+    for (const { personId } of people) {
+      if (!hasKeyForPerson(personId)) {
+        const apiKey = `dm-${personId}`;
+        await addApiKey(apiKey, personId);
+        console.error(`[PCP] Auto-generated API key for ${personId}: ${apiKey}`);
       }
     }
   }

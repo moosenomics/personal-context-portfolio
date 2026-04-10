@@ -34,21 +34,67 @@ function parseTags(raw: string): string[] {
 }
 
 /**
+ * Count redaction opening markers in content.
+ */
+export function countMarkers(content: string): number {
+  const lines = content.split("\n");
+  let count = 0;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (EXCLUDE_OPEN.test(trimmed) || INCLUDE_OPEN.test(trimmed)) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/**
+ * List all redaction opening marker lines in content (for diagnostics).
+ */
+function listMarkers(content: string): string[] {
+  const lines = content.split("\n");
+  const markers: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (EXCLUDE_OPEN.test(trimmed) || INCLUDE_OPEN.test(trimmed)) {
+      markers.push(trimmed);
+    }
+  }
+  return markers;
+}
+
+/**
  * Parse a raw markdown file into sections split on ## headings.
  * ### sub-headings are part of their parent ## section.
  * Content before the first ## heading is its own section with heading=null.
+ *
+ * CRITICAL: ## headings inside redaction blocks are NOT treated as section
+ * boundaries. They are included as content within the enclosing section.
+ * This prevents hidden sections from being split out and lost during merges.
  */
 function parseSections(raw: string): RawSection[] {
   const lines = raw.split("\n");
   const sections: RawSection[] = [];
   let current: RawSection = { heading: null, lines: [] };
+  let redactionDepth = 0;
 
   for (const line of lines) {
     const trimmed = line.trim();
-    // Only split on ## headings that are NOT inside a redaction block.
-    // But since redaction blocks can contain ## headings for hidden sections,
-    // we need to track whether we're inside a hidden block.
-    if (HEADING_RE.test(trimmed) && !trimmed.startsWith("### ")) {
+
+    // Track redaction block nesting
+    if (EXCLUDE_OPEN.test(trimmed) || INCLUDE_OPEN.test(trimmed)) {
+      redactionDepth++;
+    }
+    if (EXCLUDE_CLOSE.test(trimmed) || INCLUDE_CLOSE.test(trimmed)) {
+      redactionDepth = Math.max(0, redactionDepth - 1);
+    }
+
+    // Only split on ## headings when NOT inside a redaction block
+    if (
+      redactionDepth === 0 &&
+      HEADING_RE.test(trimmed) &&
+      !trimmed.startsWith("### ")
+    ) {
       if (current.lines.length > 0 || current.heading !== null) {
         sections.push(current);
       }
@@ -75,14 +121,12 @@ function isBlockHiddenFromUser(openingMarker: string, userTags: string[]): boole
   const excludeMatch = trimmed.match(EXCLUDE_OPEN);
   if (excludeMatch) {
     const tags = parseTags(excludeMatch[1]);
-    // User is excluded if they have ANY of the listed tags
     return userTags.some((ut) => tags.includes(ut));
   }
 
   const includeMatch = trimmed.match(INCLUDE_OPEN);
   if (includeMatch) {
     const tags = parseTags(includeMatch[1]);
-    // User is excluded if they have NONE of the listed tags
     return !userTags.some((ut) => tags.includes(ut));
   }
 
@@ -121,6 +165,7 @@ function extractHiddenBlocks(
         // Collect the entire block (opening marker through closing marker)
         const blockLines: string[] = [sectionLines[i]];
         const closeRe = isExcludeOpen ? EXCLUDE_CLOSE : INCLUDE_CLOSE;
+        const openRe = isExcludeOpen ? EXCLUDE_OPEN : INCLUDE_OPEN;
         let depth = 1;
         i++;
 
@@ -128,9 +173,7 @@ function extractHiddenBlocks(
           blockLines.push(sectionLines[i]);
           const innerTrimmed = sectionLines[i].trim();
 
-          // Track nesting of same-type markers
-          if (isExcludeOpen && EXCLUDE_OPEN.test(innerTrimmed)) depth++;
-          if (isIncludeOpen && INCLUDE_OPEN.test(innerTrimmed)) depth++;
+          if (openRe.test(innerTrimmed)) depth++;
           if (closeRe.test(innerTrimmed)) depth--;
 
           i++;
@@ -142,13 +185,9 @@ function extractHiddenBlocks(
         });
         continue;
       }
-      // If the block is visible to this user, its markers still get stripped
-      // by the redaction parser — but we need to preserve them in raw output.
-      // They're visible-layer markers. Keep them in visibleLines.
     }
 
     visibleLines.push(sectionLines[i]);
-    // Count non-empty visible lines for anchoring (skip blank lines for stability)
     if (trimmed !== "") {
       visibleLineCount++;
     }
@@ -168,7 +207,6 @@ function reinsertHiddenBlocks(
 ): string[] {
   if (hiddenBlocks.length === 0) return newVisibleLines;
 
-  // Build output by interleaving visible lines and hidden blocks
   const result: string[] = [];
   let visibleNonEmptyCount = 0;
   let blockIdx = 0;
@@ -180,12 +218,10 @@ function reinsertHiddenBlocks(
       blockIdx < hiddenBlocks.length &&
       hiddenBlocks[blockIdx].anchorAfterVisibleLine <= visibleNonEmptyCount
     ) {
-      // Add blank line separator before hidden block if result isn't empty
       if (result.length > 0 && result[result.length - 1].trim() !== "") {
         result.push("");
       }
       result.push(...hiddenBlocks[blockIdx].lines);
-      // Add blank line after hidden block
       result.push("");
       blockIdx++;
     }
@@ -217,18 +253,13 @@ function reinsertHiddenBlocks(
 
 /**
  * Check if a section's top-level content is entirely hidden from the user.
- * A section is entirely hidden if its first non-empty, non-heading line
- * is an opening marker that excludes the user, and spans the whole section.
  */
 function isSectionEntirelyHidden(
   sectionLines: string[],
   userTags: string[]
 ): boolean {
-  // A section is entirely hidden if extracting hidden blocks leaves only
-  // the heading line (or nothing) as visible content.
   const { visibleLines } = extractHiddenBlocks(sectionLines, userTags);
   const nonEmpty = visibleLines.filter((l) => l.trim() !== "");
-  // Only the heading line or nothing — the section is fully hidden
   return nonEmpty.length <= 1 && (nonEmpty.length === 0 || HEADING_RE.test(nonEmpty[0].trim()));
 }
 
@@ -263,9 +294,10 @@ export interface MergeResult {
  * Apply a single update to a raw file, preserving redacted blocks.
  *
  * For "replace" actions, this:
- * 1. Extracts hidden redaction blocks from the target section
- * 2. Replaces only the visible content with the LLM's update
- * 3. Reinserts hidden blocks at their original relative positions
+ * 1. Parses sections (respecting redaction block boundaries)
+ * 2. Extracts hidden redaction blocks from the target section
+ * 3. Replaces only the visible content with the LLM's update
+ * 4. Reinserts hidden blocks at their original relative positions
  *
  * This ensures that `<!-- @@ exclude/include -->` blocks and their
  * content are preserved byte-for-byte through write-back updates.
@@ -276,105 +308,123 @@ export function mergeUpdate(
   userTags: string[],
   visibility: { include?: string[]; exclude?: string[] } | null
 ): MergeResult {
+  const markersBefore = countMarkers(rawFileContent);
+  const markerListBefore = listMarkers(rawFileContent);
+
+  if (markersBefore > 0) {
+    console.error(`[PCP] Merge ${update.file}: ${markersBefore} redaction markers before merge`);
+    for (const m of markerListBefore) {
+      console.error(`[PCP]   marker: ${m}`);
+    }
+  }
+
   const sections = parseSections(rawFileContent);
 
+  let merged: string;
+  let previousContent = "";
+
   if (update.action === "append") {
-    // Append to end of file
     const newContent = visibility
       ? wrapWithVisibility(update.content, visibility)
       : update.content;
 
-    const merged = rawFileContent.trimEnd() + "\n\n" + newContent + "\n";
-    return {
-      content: merged,
-      previousContent: "",
-      success: true,
-    };
-  }
-
-  if (update.action === "add") {
-    // Add a new section at the end of the file (before trailing whitespace)
+    merged = rawFileContent.trimEnd() + "\n\n" + newContent + "\n";
+  } else if (update.action === "add") {
     let newSection = `${update.section}\n\n${update.content}`;
     if (visibility) {
       newSection = `${update.section}\n\n${wrapWithVisibility(update.content, visibility)}`;
     }
 
-    const merged = rawFileContent.trimEnd() + "\n\n" + newSection + "\n";
-    return {
-      content: merged,
-      previousContent: "",
-      success: true,
+    merged = rawFileContent.trimEnd() + "\n\n" + newSection + "\n";
+  } else {
+    // action === "replace"
+    if (!update.section) {
+      return {
+        content: rawFileContent,
+        previousContent: "",
+        success: false,
+        warning: `Replace action requires a section heading, but none was provided for file ${update.file}`,
+      };
+    }
+
+    const targetHeading = update.section.trim();
+    const sectionIndex = sections.findIndex(
+      (s) => s.heading?.trim() === targetHeading
+    );
+
+    if (sectionIndex === -1) {
+      return {
+        content: rawFileContent,
+        previousContent: "",
+        success: false,
+        warning: `Section "${update.section}" not found in ${update.file}. Skipping this update.`,
+      };
+    }
+
+    const targetSection = sections[sectionIndex];
+
+    if (isSectionEntirelyHidden(targetSection.lines, userTags)) {
+      return {
+        content: rawFileContent,
+        previousContent: "",
+        success: false,
+        warning: `Section "${update.section}" is hidden from the current user. Cannot replace.`,
+      };
+    }
+
+    // Extract hidden blocks before replacing visible content
+    const headingLine = targetSection.lines[0];
+    const bodyLines = targetSection.lines.slice(1);
+
+    const { visibleLines, hiddenBlocks } = extractHiddenBlocks(bodyLines, userTags);
+
+    if (hiddenBlocks.length > 0) {
+      console.error(`[PCP] Merge ${update.file} section "${update.section}": extracted ${hiddenBlocks.length} hidden block(s)`);
+      for (const hb of hiddenBlocks) {
+        console.error(`[PCP]   hidden block: ${hb.lines[0].trim()}`);
+      }
+    }
+
+    previousContent = visibleLines.join("\n").trim();
+
+    let newBody = update.content;
+    if (visibility) {
+      newBody = wrapWithVisibility(update.content, visibility);
+    }
+
+    // Verify LLM output has no markers (it shouldn't)
+    const llmMarkers = countMarkers(newBody);
+    if (llmMarkers > 0) {
+      console.error(`[PCP] ⚠ LLM output for ${update.file} contains ${llmMarkers} redaction markers — these should not be in LLM output`);
+    }
+
+    const newBodyLines = ["", ...newBody.split("\n")];
+    const mergedBodyLines = reinsertHiddenBlocks(newBodyLines, hiddenBlocks);
+
+    if (hiddenBlocks.length > 0) {
+      const reinsertedMarkers = countMarkers(mergedBodyLines.join("\n"));
+      console.error(`[PCP] Merge ${update.file}: ${reinsertedMarkers} markers after reinsertion into section`);
+    }
+
+    sections[sectionIndex] = {
+      heading: targetSection.heading,
+      lines: [headingLine, ...mergedBodyLines],
     };
+
+    merged = sections
+      .map((s) => s.lines.join("\n"))
+      .join("\n\n");
   }
 
-  // action === "replace"
-  if (!update.section) {
-    return {
-      content: rawFileContent,
-      previousContent: "",
-      success: false,
-      warning: `Replace action requires a section heading, but none was provided for file ${update.file}`,
-    };
+  // Final marker count verification
+  const markersAfter = countMarkers(merged);
+  if (markersBefore !== markersAfter) {
+    console.error(
+      `[PCP] ⚠ REDACTION MARKER MISMATCH: ${update.file} had ${markersBefore} markers before merge, has ${markersAfter} after merge`
+    );
+  } else if (markersBefore > 0) {
+    console.error(`[PCP] Merge ${update.file}: marker count verified (${markersAfter}/${markersBefore})`);
   }
-
-  // Find the section to replace
-  const targetHeading = update.section.trim();
-  const sectionIndex = sections.findIndex(
-    (s) => s.heading?.trim() === targetHeading
-  );
-
-  if (sectionIndex === -1) {
-    return {
-      content: rawFileContent,
-      previousContent: "",
-      success: false,
-      warning: `Section "${update.section}" not found in ${update.file}. Skipping this update.`,
-    };
-  }
-
-  const targetSection = sections[sectionIndex];
-
-  // Guard: don't replace sections that are entirely hidden from this user
-  if (isSectionEntirelyHidden(targetSection.lines, userTags)) {
-    return {
-      content: rawFileContent,
-      previousContent: "",
-      success: false,
-      warning: `Section "${update.section}" is hidden from the current user. Cannot replace.`,
-    };
-  }
-
-  // CRITICAL: Extract hidden blocks before replacing visible content.
-  // The heading is always the first line.
-  const headingLine = targetSection.lines[0];
-  const bodyLines = targetSection.lines.slice(1);
-
-  // Separate hidden blocks from visible content
-  const { visibleLines, hiddenBlocks } = extractHiddenBlocks(bodyLines, userTags);
-
-  // Capture previous visible content for change history
-  const previousContent = visibleLines.join("\n").trim();
-
-  // Build the new body from LLM output
-  let newBody = update.content;
-  if (visibility) {
-    newBody = wrapWithVisibility(update.content, visibility);
-  }
-
-  // Split new body into lines and reinsert hidden blocks
-  const newBodyLines = ["", ...newBody.split("\n")];
-  const mergedBodyLines = reinsertHiddenBlocks(newBodyLines, hiddenBlocks);
-
-  // Rebuild this section
-  sections[sectionIndex] = {
-    heading: targetSection.heading,
-    lines: [headingLine, ...mergedBodyLines],
-  };
-
-  // Reconstruct the file
-  const merged = sections
-    .map((s) => s.lines.join("\n"))
-    .join("\n\n");
 
   return {
     content: merged,
