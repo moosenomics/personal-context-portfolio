@@ -8,7 +8,7 @@ A multi-user MCP server that serves personal context portfolios to AI assistants
 
 I run strategic innovation at a regional HVAC distributorship. Not a tech company. Not a startup. A family-owned, mid-market distributor where I'm trying to get an entire leadership team to adopt AI — not as a technology, but as a skill.
 
-On Friday, April 4th, [The AI Daily Brief](https://www.aidailybriefpodcast.com/) dropped an episode about personal context portfolios and the [personal-context-portfolio](https://github.com/nlwhittemore/personal-context-portfolio) repo. I built mine on [contextportfolio.ai](https://contextportfolio.ai) that morning. My productivity went through the roof. Every AI conversation started with context instead of from zero.
+On Friday, April 4th, I listened to an [AI Daily Brief](https://www.aidailybriefpodcast.com/) episode about personal context portfolios and the [personal-context-portfolio](https://github.com/nlwhittemore/personal-context-portfolio) repo. I built mine on [contextportfolio.ai](https://contextportfolio.ai) that morning. My productivity went through the roof. Every AI conversation started with context instead of from zero.
 
 Tuesday morning, I shared the concept with my leadership team at our weekly meeting. The response surpassed anything I could have anticipated — they assigned *themselves* the homework of building a [contextportfolio.ai](https://contextportfolio.ai) portfolio by next week's meeting.
 
