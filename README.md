@@ -42,7 +42,7 @@ Things did not go smoothly.
 
 Become a new hire at Dunder Mifflin. Upload your [contextportfolio.ai](https://contextportfolio.ai) portfolio and ask questions about who you should talk to, what the culture is like, and — oh yeah — try updating your PCP.
 
-More importantly than it being fun — you can instantly see how valuable an interpersonal context portfolio could be. With a little more robust security.
+More importantly than it being fun — you can instantly see how valuable a central organizational context portfolio could be for a small business, or any business for that matter. Assuming it had a little more robust security.
 
 This is my solution, but I'm not going to explain every piece of it — that's what the rest of the team is for.
 
