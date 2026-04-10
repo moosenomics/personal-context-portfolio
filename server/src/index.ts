@@ -3,6 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import { FilesystemStorageProvider } from "./storage/filesystem.js";
@@ -218,9 +219,16 @@ async function main(): Promise<void> {
   // Relative paths resolve against cwd(), which is standard Node behavior and
   // matches what users expect when setting env vars.
   // Default: ../portfolios relative to __dirname, which handles both tsx (src/) and node (dist/).
-  const portfoliosDir = rawPortfoliosDir
-    ? resolve(rawPortfoliosDir)
-    : resolve(__dirname, "..", "..", "portfolios");
+  let portfoliosDir: string;
+  if (rawPortfoliosDir) {
+    portfoliosDir = resolve(rawPortfoliosDir);
+  } else {
+    // Try sibling of __dirname first (Docker: /app/dist → /app/portfolios),
+    // then two levels up (local dev: server/dist → repo-root/portfolios)
+    const siblingPath = resolve(__dirname, "..", "portfolios");
+    const repoRootPath = resolve(__dirname, "..", "..", "portfolios");
+    portfoliosDir = existsSync(siblingPath) ? siblingPath : repoRootPath;
+  }
 
   console.error(`[PCP] __dirname: ${__dirname}`);
   console.error(`[PCP] cwd: ${process.cwd()}`);
