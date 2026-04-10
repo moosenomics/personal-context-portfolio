@@ -1,8 +1,29 @@
-import { access, readdir, readFile } from "node:fs/promises";
+import { access, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { StorageProvider } from "../storage/types.js";
 import { stripNumberedPrefixes } from "../storage/filesystem.js";
 import { hasKeyForPerson, addApiKey } from "../auth/index.js";
+
+/**
+ * Generate a starter _roles.md file for a person directory if missing.
+ * The file contains a single role tag matching the person-id, giving them
+ * an immediate access tag for self-targeted include blocks.
+ */
+async function ensureRolesFile(
+  portfoliosDir: string,
+  personId: string
+): Promise<boolean> {
+  const path = join(portfoliosDir, personId, "_roles.md");
+  try {
+    await access(path);
+    return false; // already exists
+  } catch {
+    // does not exist — create it
+  }
+  const content = `# Roles\n\n- ${personId}\n`;
+  await writeFile(path, content, "utf-8");
+  return true;
+}
 
 const CANONICAL_FILES = [
   "identity.md",
@@ -128,14 +149,22 @@ export async function runStartupValidation(
     }
   }
 
-  // Auto-generate API keys for people without one (HTTP transport only —
-  // in stdio mode, auth is via PCP_USER_ID env var, not API keys)
+  // Auto-generate API keys and starter _roles.md files for people missing them
+  // (HTTP transport only — in stdio mode, auth is via PCP_USER_ID env var)
   if (!userId) {
     for (const { personId } of people) {
       if (!hasKeyForPerson(personId)) {
         const apiKey = `dm-${personId}`;
         await addApiKey(apiKey, personId);
         console.error(`[PCP] Auto-generated API key for ${personId}: ${apiKey}`);
+      }
+      try {
+        const created = await ensureRolesFile(portfoliosDir, personId);
+        if (created) {
+          console.error(`[PCP] Auto-generated _roles.md for ${personId}`);
+        }
+      } catch (err) {
+        console.error(`[PCP] ⚠ Could not create _roles.md for ${personId}: ${err}`);
       }
     }
   }

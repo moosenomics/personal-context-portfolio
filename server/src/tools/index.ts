@@ -66,17 +66,55 @@ async function extractDisplayName(
   return personId;
 }
 
+/**
+ * Wraps a tool handler so every text response is prepended with
+ * [Authenticated as: Name (person-id)]. Anchors client AIs to the
+ * authenticated identity, preventing inference from org index data.
+ */
+function makeIdentityWrapper(storage: StorageProvider, userId: string) {
+  let cachedPrefix: string | null = null;
+
+  async function getPrefix(): Promise<string> {
+    if (cachedPrefix !== null) return cachedPrefix;
+    const displayName = await extractDisplayName(storage, userId);
+    cachedPrefix = `[Authenticated as: ${displayName} (${userId})]\n\n`;
+    return cachedPrefix;
+  }
+
+  // Use generic inference variables P and R so contextual typing from
+  // server.tool flows through the wrapper to the inner handler. This
+  // preserves both parameter types and literal return types.
+  return function withIdentity<P extends readonly unknown[], R>(
+    handler: (...args: P) => Promise<R>
+  ): (...args: P) => Promise<R> {
+    return async (...args: P): Promise<R> => {
+      const result = await handler(...args);
+      const prefix = await getPrefix();
+      const r = result as unknown as { content?: unknown };
+      if (r && Array.isArray(r.content)) {
+        for (const item of r.content as Array<{ type?: string; text?: string }>) {
+          if (item && item.type === "text" && typeof item.text === "string") {
+            item.text = prefix + item.text;
+          }
+        }
+      }
+      return result;
+    };
+  };
+}
+
 export function registerTools(
   server: McpServer,
   storage: StorageProvider,
   userId: string
 ): void {
+  const withIdentity = makeIdentityWrapper(storage, userId);
   // Tool 1: get_my_portfolio
   server.tool(
     "get_my_portfolio",
     "Retrieve your complete personal context portfolio — all files about you including your identity, role, current projects, team relationships, tools, communication style, goals, preferences, domain knowledge, and decision log. Use this when the user asks about themselves broadly, wants a full overview, or says 'get my portfolio.'",
     {},
-    async () => {
+    withIdentity(async () => {
       try {
         const files = await storage.readAll(userId);
         const sections: string[] = [];
@@ -95,7 +133,7 @@ export function registerTools(
           isError: true,
         };
       }
-    }
+    })
   );
 
   // Tool 2: get_my_portfolio_file
@@ -103,7 +141,7 @@ export function registerTools(
     "get_my_portfolio_file",
     "Retrieve a specific file from your own personal context portfolio. Files include: identity, role-and-responsibilities, current-projects, team-and-relationships, tools-and-systems, communication-style, goals-and-priorities, preferences-and-constraints, domain-knowledge, decision-log. Use this when the user asks about a specific aspect of themselves, like 'what are my current projects?' or 'show me my communication style.'",
     { file_name: z.string().describe("File name without .md extension (e.g., 'identity', 'current-projects'). Valid values: identity, role-and-responsibilities, current-projects, team-and-relationships, tools-and-systems, communication-style, goals-and-priorities, preferences-and-constraints, domain-knowledge, decision-log.") },
-    async ({ file_name }) => {
+    withIdentity(async ({ file_name }) => {
       const fileName = normalizeFileName(file_name);
       try {
         const content = await storage.read(userId, fileName);
@@ -124,7 +162,7 @@ export function registerTools(
           };
         }
       }
-    }
+    })
   );
 
   // Tool 3: get_my_roles
@@ -132,7 +170,7 @@ export function registerTools(
     "get_my_roles",
     "Retrieve your organizational role tags. These tags determine which content you can see in other people's portfolios. Use this when the user asks what roles they have, what groups they belong to, or why they can or cannot see certain content.",
     {},
-    async () => {
+    withIdentity(async () => {
       const roles = await storage.getRoles(userId);
       const allTags = [...roles, userId];
 
@@ -143,7 +181,7 @@ export function registerTools(
       }
 
       return { content: [{ type: "text", text }] };
-    }
+    })
   );
 
   // Tool 4: get_portfolio_file
@@ -154,7 +192,7 @@ export function registerTools(
       person_id: z.string().describe("The person's identifier (e.g., 'jim-halpert'). Use list_people to find valid person-ids."),
       file_name: z.string().describe("File name without .md extension (e.g., 'identity', 'current-projects')."),
     },
-    async ({ person_id, file_name }) => {
+    withIdentity(async ({ person_id, file_name }) => {
       // Validate person_id
       if (person_id.includes("/") || person_id.includes("\\") || person_id.includes("..")) {
         return {
@@ -185,7 +223,7 @@ export function registerTools(
           isError: true,
         };
       }
-    }
+    })
   );
 
   // Tool 5: get_full_portfolio
@@ -195,7 +233,7 @@ export function registerTools(
     {
       person_id: z.string().describe("The person's identifier (e.g., 'jim-halpert')."),
     },
-    async ({ person_id }) => {
+    withIdentity(async ({ person_id }) => {
       if (person_id.includes("/") || person_id.includes("\\") || person_id.includes("..")) {
         return {
           content: [{ type: "text", text: invalidIdError(person_id) }],
@@ -221,7 +259,7 @@ export function registerTools(
           isError: true,
         };
       }
-    }
+    })
   );
 
   // Tool 6: list_people
@@ -229,7 +267,7 @@ export function registerTools(
     "list_people",
     "List all people who have portfolios in the system. Returns person identifiers and names. Use this when the user asks who's in the system, wants to look someone up, or you need to verify a person-id before making another call.",
     {},
-    async () => {
+    withIdentity(async () => {
       const people = await storage.listPeople();
       const entries: string[] = [];
 
@@ -241,7 +279,7 @@ export function registerTools(
       return {
         content: [{ type: "text", text: `# People in the System\n\n${entries.join("\n")}` }],
       };
-    }
+    })
   );
 
   // Tool 7: list_files
@@ -251,7 +289,7 @@ export function registerTools(
     {
       person_id: z.string().describe("The person's identifier (e.g., 'jim-halpert')."),
     },
-    async ({ person_id }) => {
+    withIdentity(async ({ person_id }) => {
       if (person_id.includes("/") || person_id.includes("\\") || person_id.includes("..")) {
         return {
           content: [{ type: "text", text: invalidIdError(person_id) }],
@@ -272,7 +310,7 @@ export function registerTools(
           isError: true,
         };
       }
-    }
+    })
   );
 
   // Tool 8: get_org_index
@@ -280,10 +318,10 @@ export function registerTools(
     "get_org_index",
     "Retrieve the organizational index — a summary of all people in the system with their names, roles, and reporting relationships. Use this when the user asks about the org structure, who reports to whom, or needs an overview of the team before diving into individual portfolios.",
     {},
-    async () => {
+    withIdentity(async () => {
       const index = await generateOrgIndex(storage);
       return { content: [{ type: "text", text: index }] };
-    }
+    })
   );
 
   // Tool 9: get_profile_freshness
@@ -293,7 +331,7 @@ export function registerTools(
     {
       person_id: z.string().describe("Person identifier (e.g., 'michael-scott')."),
     },
-    async ({ person_id }) => {
+    withIdentity(async ({ person_id }) => {
       if (person_id.includes("/") || person_id.includes("\\") || person_id.includes("..")) {
         return {
           content: [{ type: "text" as const, text: invalidIdError(person_id) }],
@@ -323,7 +361,7 @@ export function registerTools(
           isError: true,
         };
       }
-    }
+    })
   );
 
   // Tool 10: submit_profile_updates
@@ -341,7 +379,7 @@ export function registerTools(
         "Optional redaction scoping for the new content. If provided, inserted content will be wrapped in redaction markers. Example: { exclude: ['michael-scott', 'dwight-schrute'] }"
       ),
     },
-    async ({ observations, visibility }) => {
+    withIdentity(async ({ observations, visibility }) => {
       try {
         const result = await executeWriteBack(storage, {
           personId: userId,
@@ -373,7 +411,7 @@ export function registerTools(
           isError: true,
         };
       }
-    }
+    })
   );
 
   // Tool 11: update_my_profile
@@ -391,7 +429,7 @@ export function registerTools(
         "Optional redaction scoping for the new content."
       ),
     },
-    async ({ observations, visibility }) => {
+    withIdentity(async ({ observations, visibility }) => {
       try {
         const result = await executeWriteBack(storage, {
           personId: userId,
@@ -423,7 +461,7 @@ export function registerTools(
           isError: true,
         };
       }
-    }
+    })
   );
 
   // Tool 12: view_portfolio_as
@@ -435,7 +473,7 @@ export function registerTools(
       viewer_person_id: z.string().describe("The person whose perspective to view from."),
       file_name: z.string().optional().describe("Specific file name without .md extension. If omitted, returns all files."),
     },
-    async ({ person_id, viewer_person_id, file_name }) => {
+    withIdentity(async ({ person_id, viewer_person_id, file_name }) => {
       // Validate IDs
       for (const id of [person_id, viewer_person_id]) {
         if (id.includes("/") || id.includes("\\") || id.includes("..")) {
@@ -495,6 +533,6 @@ export function registerTools(
           isError: true,
         };
       }
-    }
+    })
   );
 }

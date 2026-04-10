@@ -22,6 +22,8 @@ interface HiddenBlock {
   anchorAfterVisibleLine: number;
 }
 
+const H1_RE = /^#\s+/;
+const H2_RE = /^##\s+/;
 const HEADING_RE = /^##\s+/;
 const INCLUDE_OPEN = /^<!--\s*@@\s*include:\s*(.+?)\s*-->$/;
 const EXCLUDE_OPEN = /^<!--\s*@@\s*exclude:\s*(.+?)\s*-->$/;
@@ -89,12 +91,15 @@ function parseSections(raw: string): RawSection[] {
       redactionDepth = Math.max(0, redactionDepth - 1);
     }
 
-    // Only split on ## headings when NOT inside a redaction block
-    if (
-      redactionDepth === 0 &&
-      HEADING_RE.test(trimmed) &&
-      !trimmed.startsWith("### ")
-    ) {
+    // Split on # or ## headings (but NOT ###) at depth 0.
+    // H1_RE matches single `#` only; H2_RE matches `##` only (mutually exclusive).
+    // Both create section boundaries — this lets `replace` target a `# Identity`
+    // heading in files that have no `##` subsections.
+    const isH1 = redactionDepth === 0 && H1_RE.test(trimmed) && !H2_RE.test(trimmed);
+    const isH2 =
+      redactionDepth === 0 && H2_RE.test(trimmed) && !trimmed.startsWith("### ");
+
+    if (isH1 || isH2) {
       if (current.lines.length > 0 || current.heading !== null) {
         sections.push(current);
       }

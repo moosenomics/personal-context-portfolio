@@ -270,4 +270,107 @@ Content two.
     const after = countMarkers(result.content);
     expect(after).toBe(before);
   });
+
+  // Test 24: replace action succeeds on file with only # heading
+  it("replace action succeeds on file with only # heading (no ## sections)", () => {
+    const raw = `# Identity
+
+Test Person A. Role: Tester.
+`;
+
+    const result = mergeUpdate(
+      raw,
+      {
+        file: "identity.md",
+        section: "# Identity",
+        action: "replace",
+        content: "Test Person A. Role: Senior Tester. Recently promoted.",
+        reason: "Promotion",
+      },
+      ["tester", "test-person-a"],
+      null
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.warning).toBeUndefined();
+    expect(result.content).toContain("Senior Tester");
+    expect(result.content).toContain("# Identity");
+    expect(result.content).not.toContain("Role: Tester.");
+  });
+
+  // Test 25: replace on # heading does not affect ## sections in same file
+  it("replace on # heading preserves ## sections in same file", () => {
+    const raw = `# Domain Knowledge
+
+Top-level overview content.
+
+## Areas of Expertise
+
+**Skill A.** Description.
+
+## Areas Where They're a Beginner
+
+**Beginner skill.** Description.
+`;
+
+    const result = mergeUpdate(
+      raw,
+      {
+        file: "domain-knowledge.md",
+        section: "# Domain Knowledge",
+        action: "replace",
+        content: "Updated top-level overview.",
+        reason: "Updated overview",
+      },
+      ["tester"],
+      null
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("Updated top-level overview.");
+    expect(result.content).not.toContain("Top-level overview content.");
+    // ## sections preserved
+    expect(result.content).toContain("## Areas of Expertise");
+    expect(result.content).toContain("**Skill A.**");
+    expect(result.content).toContain("## Areas Where They're a Beginner");
+    expect(result.content).toContain("**Beginner skill.**");
+  });
+
+  // Test 26: replace on ## heading still works in file with both # and ##
+  it("replace on ## heading still works in file with both # and ## headings", () => {
+    const raw = `# Domain Knowledge
+
+Top-level overview.
+
+## Areas of Expertise
+
+**Original skill.** Description.
+
+## Areas Where They're a Beginner
+
+**Beginner skill.** Description.
+`;
+
+    const result = mergeUpdate(
+      raw,
+      {
+        file: "domain-knowledge.md",
+        section: "## Areas of Expertise",
+        action: "replace",
+        content: "**New skill.** Updated description.",
+        reason: "Updated expertise",
+      },
+      ["tester"],
+      null
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("**New skill.**");
+    expect(result.content).not.toContain("**Original skill.**");
+    // # heading and other ## section preserved
+    expect(result.content).toContain("# Domain Knowledge");
+    expect(result.content).toContain("Top-level overview.");
+    expect(result.content).toContain("## Areas Where They're a Beginner");
+    expect(result.content).toContain("**Beginner skill.**");
+  });
 });

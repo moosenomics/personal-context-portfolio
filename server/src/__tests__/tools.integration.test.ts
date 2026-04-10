@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import { FilesystemStorageProvider } from "../storage/filesystem.js";
 import { applyRedaction } from "../redaction/parser.js";
 import { personNotFoundError, fileNotFoundError } from "../messages/index.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { registerTools } from "../tools/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = resolve(__dirname, "fixtures");
@@ -157,5 +159,28 @@ describe("Integration — Tool Response Pipeline", () => {
         expect(redacted).not.toContain("<!-- @@ ");
       }
     }
+  });
+
+  // Test 49: identity injection appears in tool response
+  it("identity injection appears in every tool response", async () => {
+    const storage = createStorage();
+    const server = new McpServer({ name: "test", version: "1.0.0" });
+    registerTools(server, storage, "test-person-a");
+
+    // Access registered tool callback (private API — fine for tests)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const registered = (server as unknown as { _registeredTools: Record<string, any> })
+      ._registeredTools;
+    expect(registered).toBeDefined();
+    expect(registered["get_my_roles"]).toBeDefined();
+
+    const handler = registered["get_my_roles"].handler;
+    const result = await handler({}, {});
+
+    expect(result).toBeDefined();
+    expect(result.content).toBeDefined();
+    expect(Array.isArray(result.content)).toBe(true);
+    const text = result.content[0].text as string;
+    expect(text).toMatch(/^\[Authenticated as: .* \(test-person-a\)\]/);
   });
 });
