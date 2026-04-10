@@ -10,7 +10,7 @@ const NUMBERED_PREFIX_RE = /^\d{1,2}-(.+)$/;
  * Only renames files matching the ##-{name}.md pattern. Non-matching files are untouched.
  * This is a one-time migration — subsequent reads find canonical names directly.
  */
-async function stripNumberedPrefixes(dirPath: string): Promise<void> {
+export async function stripNumberedPrefixes(dirPath: string): Promise<void> {
   let entries: string[];
   try {
     entries = await readdir(dirPath);

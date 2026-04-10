@@ -1,6 +1,7 @@
 import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { StorageProvider } from "../storage/types.js";
+import { stripNumberedPrefixes } from "../storage/filesystem.js";
 
 const CANONICAL_FILES = [
   "identity.md",
@@ -46,8 +47,12 @@ export async function runStartupValidation(
   let warnings = 0;
 
   for (const { personId } of people) {
-    // Check canonical files
     const dirPath = join(portfoliosDir, personId);
+
+    // Strip numbered prefixes (e.g., 01-identity.md → identity.md) before validation
+    await stripNumberedPrefixes(dirPath);
+
+    // Check canonical files
     let dirEntries: string[];
     try {
       dirEntries = await readdir(dirPath);
