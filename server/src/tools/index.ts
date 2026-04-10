@@ -8,7 +8,8 @@ import {
   fileNotFoundError,
   invalidIdError,
   missingRolesWarning,
-  viewAsWarning,
+  missingRolesWarningWithContent,
+  viewAsWarningWithContent,
 } from "../messages/index.js";
 import { executeWriteBack } from "../write-back/index.js";
 import { isLLMConfigured } from "../llm/index.js";
@@ -460,8 +461,6 @@ export function registerTools(
       const viewerTags = await getUserTags(storage, viewer_person_id);
       const requesterTags = await getUserTags(storage, userId);
 
-      const warning = viewAsWarning(userId, viewer_person_id);
-
       try {
         if (file_name) {
           const fileName = normalizeFileName(file_name);
@@ -470,7 +469,7 @@ export function registerTools(
           const viewerFiltered = applyRedaction(content, viewerTags);
           const doubleFiltered = applyRedaction(viewerFiltered, requesterTags);
           return {
-            content: [{ type: "text", text: `${warning}\n\n---\n\n${doubleFiltered}` }],
+            content: [{ type: "text", text: viewAsWarningWithContent(userId, viewer_person_id, doubleFiltered) }],
           };
         } else {
           const files = await storage.readAll(person_id);
@@ -483,7 +482,7 @@ export function registerTools(
           }
 
           return {
-            content: [{ type: "text", text: `${warning}\n\n---\n\n${sections.join("\n\n---\n\n")}` }],
+            content: [{ type: "text", text: viewAsWarningWithContent(userId, viewer_person_id, sections.join("\n\n---\n\n")) }],
           };
         }
       } catch {

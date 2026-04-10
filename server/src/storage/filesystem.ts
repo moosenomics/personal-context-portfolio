@@ -1,6 +1,42 @@
-import { readdir, readFile, stat, writeFile, appendFile, mkdir } from "node:fs/promises";
+import { readdir, readFile, stat, writeFile, appendFile, mkdir, rename } from "node:fs/promises";
 import { join } from "node:path";
 import type { FileInfo, FileInfoWithDate, PersonInfo, StorageProvider } from "./types.js";
+
+/** Pattern: 1-2 digits, hyphen, then the rest (e.g., "01-identity.md") */
+const NUMBERED_PREFIX_RE = /^\d{1,2}-(.+)$/;
+
+/**
+ * Scan a directory for numbered-prefix files and rename them to canonical names.
+ * Only renames files matching the ##-{name}.md pattern. Non-matching files are untouched.
+ * This is a one-time migration — subsequent reads find canonical names directly.
+ */
+async function stripNumberedPrefixes(dirPath: string): Promise<void> {
+  let entries: string[];
+  try {
+    entries = await readdir(dirPath);
+  } catch {
+    return;
+  }
+
+  for (const entry of entries) {
+    if (!entry.endsWith(".md")) continue;
+    const match = entry.match(NUMBERED_PREFIX_RE);
+    if (!match) continue;
+
+    const canonicalName = match[1];
+    // Only rename if the canonical name doesn't already exist
+    if (entries.includes(canonicalName)) continue;
+
+    const oldPath = join(dirPath, entry);
+    const newPath = join(dirPath, canonicalName);
+    try {
+      await rename(oldPath, newPath);
+      console.error(`[PCP] Renamed ${entry} → ${canonicalName} in ${dirPath}`);
+    } catch (err) {
+      console.error(`[PCP] ⚠ Failed to rename ${entry} → ${canonicalName}: ${err}`);
+    }
+  }
+}
 
 function validatePathSegment(value: string, label: string): void {
   if (
@@ -29,7 +65,14 @@ export class FilesystemStorageProvider implements StorageProvider {
     try {
       return await readFile(filePath, "utf-8");
     } catch {
-      throw new Error(`File not found: ${fileName} for person ${personId}`);
+      // Try stripping numbered prefixes as a fallback
+      const dirPath = join(this.portfoliosDir, personId);
+      await stripNumberedPrefixes(dirPath);
+      try {
+        return await readFile(filePath, "utf-8");
+      } catch {
+        throw new Error(`File not found: ${fileName} for person ${personId}`);
+      }
     }
   }
 
@@ -47,6 +90,10 @@ export class FilesystemStorageProvider implements StorageProvider {
     validatePathSegment(personId, "person-id");
 
     const dirPath = join(this.portfoliosDir, personId);
+
+    // Strip numbered prefixes before listing
+    await stripNumberedPrefixes(dirPath);
+
     let entries: string[];
     try {
       entries = await readdir(dirPath);
@@ -120,6 +167,10 @@ export class FilesystemStorageProvider implements StorageProvider {
     validatePathSegment(personId, "person-id");
 
     const dirPath = join(this.portfoliosDir, personId);
+
+    // Strip numbered prefixes before listing
+    await stripNumberedPrefixes(dirPath);
+
     let entries: string[];
     try {
       entries = await readdir(dirPath);
